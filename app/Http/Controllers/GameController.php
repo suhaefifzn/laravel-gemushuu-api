@@ -2,80 +2,64 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use Yajra\DataTables\DataTables;
 
-// Models
 use App\Models\Game;
-use Illuminate\Support\Facades\DB;
+
+use App\Services\GameService;
+use App\DTOs\GameData;
+
+use App\Http\Requests\StoreGameRequest;
+use App\Http\Requests\UpdateGameRequest;
+
+use Illuminate\Http\JsonResponse;
 
 class GameController extends Controller
 {
-    public function getAll() {
-        $query = Game::query();
+    protected GameService $gameService;
 
-        return DataTables::of($query->select('id', 'name', 'slug'))
-            ->addColumn('action', function ($game) {
-                return [
-                    'slug' => $game->slug
-                ];
-            })
+    public function __construct(GameService $gameService)
+    {
+        $this->gameService = $gameService;
+    }
+
+    public function getAll(): JsonResponse
+    {
+        $query = $this->gameService->getAll();
+
+        return DataTables::of($query)
+            ->addColumn('action', fn($game) => ['slug' => $game->slug])
             ->rawColumns(['action'])
             ->toJson();
     }
 
-    public function getOne(Game $game) {
-        return $this->successfulResponseJSON(null, $game);
+    public function getOne(Game $game): JsonResponse
+    {
+        $data = $this->gameService->getOne($game);
+
+        return $this->successfulResponseJSON(null, $data);
     }
 
-    public function add(Request $request) {
-        $request->validate([
-            'name' => 'required|string|min:3|max:255',
-        ]);
+    public function add(StoreGameRequest $request): JsonResponse
+    {
+        $data = GameData::fromArray($request->validated());
+        $this->gameService->create($data);
 
-        DB::beginTransaction();
-        $create = Game::create([
-            'name' => $request->name
-        ]);
-
-        if ($create) {
-            DB::commit();
-            return $this->successfulResponseJSON('Game has been added successfully');
-        }
-
-        DB::rollBack();
-        return $this->failedResponseJSON('Game failed to be added', 500);
+        return $this->successfulResponseJSON('Game has been created successfully', null, 201);
     }
 
-    public function update(Request $request, Game $game) {
-        $request->validate([
-            'name' => 'required|string|min:3|max:255',
-        ]);
+    public function update(UpdateGameRequest $request, Game $game): JsonResponse
+    {
+        $data = GameData::fromArray($request->validated());
+        $updatedGame = $this->gameService->update($game, $data);
 
-        DB::beginTransaction();
-        $update = $game->update([
-            'name' => $request->name
-        ]);
-
-        if ($update) {
-            DB::commit();
-            return $this->successfulResponseJSON('Game has been updated successfully');
-        }
-
-        DB::rollBack();
-        return $this->failedResponseJSON('Game failed to be updated', 500);
+        return $this->successfulResponseJSON(null, $updatedGame);
     }
 
-    public function delete(Game $game) {
-        DB::beginTransaction();
-        $delete = $game->delete();
+    public function delete(Game $game): JsonResponse
+    {
+        $this->gameService->delete($game);
 
-        if ($delete) {
-            DB::commit();
-            return $this->successfulResponseJSON('Game has been deleted successfully');
-        }
-
-        DB::rollBack();
-        return $this->failedResponseJSON('Game failed to be deleted', 500);
+        return $this->successfulResponseJSON('Game has been deleted successfully');
     }
 }
